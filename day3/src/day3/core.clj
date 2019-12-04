@@ -59,8 +59,17 @@
   by finding the segments and the points within the segments up
   to the given point"
   [wire xpt]
-  
-  )
+  (loop [remain wire
+         curpos [0 0]
+         points[]]
+    (if (not (neg? (.indexOf points xpt)))
+      (.indexOf points xpt)
+      (let [[wvs & remaining] remain
+            [a-pt b-pt] (mk-segment curpos wvs)
+            these-points (mk-points [a-pt b-pt])]
+        (recur remaining
+               b-pt
+               (into points these-points))))))
 
 
 (defn -main
@@ -73,9 +82,11 @@
         wire1 (clojure.string/split warg1 #",")
         wire2 (clojure.string/split warg2 #",")
         origin [0 0]
-        wire1-points (set (into [] cat (map mk-points (partition 2 (wvs-to-segments wire1)))))
-        wire2-points (set (into [] cat (map mk-points (partition 2 (wvs-to-segments wire2)))))
-        x-points (clojure.set/intersection wire1-points wire2-points)]
+        wire1-points (into [] cat (map mk-points (partition 2 (wvs-to-segments wire1))))
+        wire1-points-set (set wire1-points)
+        wire2-points (into [] cat (map mk-points (partition 2 (wvs-to-segments wire2))))
+        wire2-points-set (set wire2-points)
+        x-points (clojure.set/intersection wire1-points-set wire2-points-set)]
 
     ;; (if-not (empty? args)
     ;;   (println "wire1 pts:" wire1-points)
@@ -90,8 +101,10 @@
                                         ; Now compute the point with
                                         ; the lowest matching distance
                                         ; cost over the pair of wires
-
-    
-    
-
-    ))
+    (let [cost1 (map #(vector (dist-to-x-point wire1 %) %) x-points)
+          cost2 (map #(vector (dist-to-x-point wire2 %) %) x-points)
+          cost-summed-sorted (sort (for [[x pt] cost1
+                                         [y _] cost2]
+                                     (vector (+ x y) pt)))]
+      (println)
+      (println "Summed costs:" cost-summed-sorted))))
