@@ -3,6 +3,11 @@
 
 (def ga-tape [3,8,1001,8,10,8,105,1,0,0,21,38,55,68,93,118,199,280,361,442,99999,3,9,1002,9,2,9,101,5,9,9,102,4,9,9,4,9,99,3,9,101,3,9,9,1002,9,3,9,1001,9,4,9,4,9,99,3,9,101,4,9,9,102,3,9,9,4,9,99,3,9,102,2,9,9,101,4,9,9,102,2,9,9,1001,9,4,9,102,4,9,9,4,9,99,3,9,1002,9,2,9,1001,9,2,9,1002,9,5,9,1001,9,2,9,1002,9,4,9,4,9,99,3,9,101,1,9,9,4,9,3,9,102,2,9,9,4,9,3,9,101,1,9,9,4,9,3,9,101,1,9,9,4,9,3,9,101,1,9,9,4,9,3,9,101,2,9,9,4,9,3,9,1001,9,1,9,4,9,3,9,102,2,9,9,4,9,3,9,1002,9,2,9,4,9,3,9,1002,9,2,9,4,9,99,3,9,1001,9,1,9,4,9,3,9,1001,9,2,9,4,9,3,9,1002,9,2,9,4,9,3,9,101,2,9,9,4,9,3,9,1001,9,2,9,4,9,3,9,1001,9,1,9,4,9,3,9,102,2,9,9,4,9,3,9,1001,9,1,9,4,9,3,9,1002,9,2,9,4,9,3,9,102,2,9,9,4,9,99,3,9,1002,9,2,9,4,9,3,9,1001,9,1,9,4,9,3,9,102,2,9,9,4,9,3,9,102,2,9,9,4,9,3,9,101,1,9,9,4,9,3,9,1001,9,1,9,4,9,3,9,101,2,9,9,4,9,3,9,102,2,9,9,4,9,3,9,101,2,9,9,4,9,3,9,1001,9,2,9,4,9,99,3,9,1001,9,2,9,4,9,3,9,1001,9,2,9,4,9,3,9,102,2,9,9,4,9,3,9,101,1,9,9,4,9,3,9,1002,9,2,9,4,9,3,9,1002,9,2,9,4,9,3,9,1001,9,2,9,4,9,3,9,1001,9,2,9,4,9,3,9,101,1,9,9,4,9,3,9,1001,9,1,9,4,9,99,3,9,102,2,9,9,4,9,3,9,1001,9,1,9,4,9,3,9,1001,9,1,9,4,9,3,9,1002,9,2,9,4,9,3,9,1002,9,2,9,4,9,3,9,1001,9,2,9,4,9,3,9,1002,9,2,9,4,9,3,9,102,2,9,9,4,9,3,9,102,2,9,9,4,9,3,9,101,2,9,9,4,9,99])
 
+;
+(def ga-tape [3,26,1001,26,-4,26,3,27,1002,27,2,27,1,27,26,
+              27,4,27,1001,28,-1,28,1005,28,6,99,0,0,5])
+
+
                                         ; Opcodes
 (def ADD 1)
 (def MUL 2)
@@ -149,15 +154,16 @@
 (defn phase-settings-s
   "Return a lazy-seq from (range 43211) without any duplicate digits
    Each return is a seq of ascii numerals in 0..4"
-  []
-  (map #(map str (format "%05d" %))
-       (filter #(nil? (re-find #"[5-9]" (format "%d" %)))
-               (filter #(= 5 (count (dedupe (sort (seq (format "%05d" %))))))
-                       (range 43211)))))
+  [bot top]
+  (let [fpat (if (>= top 50000) #"[0-4]" #"[5-9]")]
+    (map #(map str (format "%05d" %))
+         (filter #(nil? (re-find fpat (format "%d" %)))
+                 (filter #(= 5 (count (dedupe (sort (seq (format "%05d" %))))))
+                         (range bot top))))))
 
 (defn phase-settings
-  []
-  (for [aseq (phase-settings-s)
+  [bot top]
+  (for [aseq (phase-settings-s bot top)
         :let [ps (map read-string aseq)]]
     ps)
   )
@@ -167,8 +173,9 @@
   [& args]
   (let []
     (loop [maxthrust 0
+           ampEthrust 0
            signal 0
-           ps-seq (phase-settings)
+           ps-seq (phase-settings 50000 100000)
            numsignals 0]
       (if (nil? ps-seq)
         (do
@@ -177,7 +184,7 @@
           (println "Counted" numsignals "signals"))
         (let [[ps & remaining] ps-seq
               [p1 p2 p3 p4 p5] ps
-              t1 (intcode ga-tape [p1 0])
+              t1 (intcode ga-tape [p1 ampEthrust])
               t2 (intcode ga-tape [p2 t1])
               t3 (intcode ga-tape [p3 t2])
               t4 (intcode ga-tape [p4 t3])
@@ -185,6 +192,7 @@
               newthrust (if (> thrust maxthrust) thrust maxthrust)
               newsig (if (> thrust maxthrust) ps signal)]
           (recur newthrust
+                 thrust
                  newsig
                  remaining
                  (inc numsignals)))))))
