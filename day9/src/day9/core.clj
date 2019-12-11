@@ -42,6 +42,7 @@
                                         ; Modes
 (def POSMODE 0)
 (def IMMMODE 1)
+(def RELMODE 2)
 
 (defn imm1 [code]
   "Value of 100th's digit 0 1 or 2"
@@ -77,11 +78,11 @@
 (defn iorp
   "Return immediate value or [relative] position value from tape"
   [tape imm? x]
-  (if (= imm? 1)
-    x
-    (if (= imm? 2)
-      (nth tape (+ @relbase x))
-      (nth tape x))))
+  (cond
+    (= imm? IMMMODE) x
+    (= imm? RELMODE) (nth tape (+ @relbase x))
+    (= imm? POSMODE) (nth tape x)
+    :else (println "\nBAD MODE:" imm?)))
 
 (defn tape-input-func
   "Return a function that returns the next code from the tape"
