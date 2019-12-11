@@ -100,7 +100,7 @@
                              param)]
                    (assoc! tape pos v)
                    v))           1]
-         :PRN [(fn [tape val] (println "\n  OUTPUT:" val)) 1]
+         :PRN [(fn [tape val] (println "\n  OUTPUT:" val) val) 1]
          :BRT [nil    2]
          :BRF [nil    2]
          :LT  [(fn [x y] (if (< x y) 1 0))    3]
@@ -156,7 +156,8 @@
                 ;(println opkw "into " pos "with" p1 p2)
                 (assoc! tape pos (f p1 p2))
                 (nth tape pos)))]
-    (println " ->" val)))
+    (println " ->" val)
+    val))
 
 ;(def tape (long-array 10000000))       ; Ten MILLION longs
 (defn mktape [n src]
@@ -176,21 +177,16 @@
         tape (mktape 40000000 src-tape)
         _ (println "Program size is:" tapelen)]
     (reset! relbase 0)
-    (loop [code-ex (nxtcode tape)
-           out-val 0]
-      (let [code (first code-ex)
+    (loop [out-val 0]
+      (let [code-ex (nxtcode tape)
+            code (first code-ex)
             opkw (opint-to-opkw code)]
         (if (or (nil? code) (= :HLT opkw))
-          (do
-            (println "\nDone!")
-            out-val)
+          out-val
           (let [res (doop tape code-ex)]
-            (recur (nxtcode tape)
-                   res)))))))
-
-
+            (recur res)))))))
 
 (defn -main
   "BOOST signal detection"
   [& args]
-  (intcode ga-tape [2] ))
+  (println "\nValue:" (intcode ga-tape [1 1])))
