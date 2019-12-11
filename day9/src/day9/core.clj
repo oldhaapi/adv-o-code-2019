@@ -166,8 +166,8 @@
       (if (< i n)
         (recur (inc i)
                (conj! v (if (< i sz)
-                          (bigint (nth src i))
-                          (bigint 0))))
+                          (nth src i)   ; Use bigint if necessary
+                          0)))          ; Use bigint if necessary
         v))))
 
 (defn intcode [src-tape inp-seq]
@@ -189,4 +189,4 @@
 (defn -main
   "BOOST signal detection"
   [& args]
-  (println "\nValue:" (intcode ga-tape [1 1])))
+  (println "\nValue:" (intcode ga-tape [2])))
