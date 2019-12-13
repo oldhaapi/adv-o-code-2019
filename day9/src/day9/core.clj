@@ -189,4 +189,4 @@
 (defn -main
   "BOOST signal detection"
   [& args]
-  (println "\nValue:" (intcode ga-tape [2])))
+  (println "\nValue:" (intcode ga-tape [(if (nil? args) 2 1)])))

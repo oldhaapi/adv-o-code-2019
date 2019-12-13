@@ -94,14 +94,13 @@
          :HLT [ nil   0]
          }
         )
-      (let [_ (println "IP is" @ip)
-            code (aget tape @ip)
+      (let [code (aget tape @ip)
             opkw (opint-to-opkw code)
-            _ (println "OP:" opkw)
             opmap (opkw op-map)
             oplen (second opmap)
             params (take oplen (nthrest tape (+ 1 @ip)))
-            immbits (imm code)]
+            immbits (imm code)
+            _ (print (format "%3s %05d/%d" (int @ip) (int code) (int oplen)) opkw params) ]
         (swap! ip + (+ 1 oplen))   ; skip the opcode and params
         ;; Handle branching right here
         (if (and (= opkw :BRT) (not (zero? (iorp tape (first immbits) (first params)))))
