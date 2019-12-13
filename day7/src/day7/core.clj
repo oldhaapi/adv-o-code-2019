@@ -9,6 +9,7 @@
 
 
                                         ; Opcodes
+
 (def ADD 1)
 (def MUL 2)
 (def INP  3)
@@ -17,6 +18,7 @@
 (def BRF 6)
 (def LT  7)
 (def EQL 8)
+(def RBS 9)
 (def HLT 99)
 (defn opint-to-opkw [op-with-modes]
   (let [op (mod op-with-modes 100)]
@@ -29,6 +31,7 @@
       (= op BRF) :BRF
       (= op LT)  :LT
       (= op EQL) :EQL
+      (= op RBS) :RBS                   ;Relative base adjustment
       (= op HLT) :HLT)))
 
 (def MAXOPINTSZ 4
@@ -40,20 +43,24 @@
                                         ; Modes
 (def POSMODE 0)
 (def IMMMODE 1)
+(def RELMODE 2)
 
 (defn imm1 [code]
-  "true if value of 100th's digit is non-zero"
-  (not (zero? (quot (mod code 1000) 100))))
+  "Value of 100th's digit 0 1 or 2"
+  (quot (mod code 1000) 100))
 
 (defn imm2 [code]
-  (not (zero? (quot (mod code 10000) 1000))))
+  (quot (mod code 10000) 1000))
 
 (defn imm3 [code]
-  (not (zero? (quot (mod code 100000) 10000))))
+  (quot (mod code 100000) 10000))
 
 (defn imm [code]
   "Return sequence of immediate mode bits from the code"
   (sequence [(imm1 code) (imm2 code) (imm3 code)]))
+
+(defn rel? [immbit]
+  (= immbit 2))
 
 (defn in-func
   "Return a function to read from an int seq or read-line from *in*"
@@ -63,16 +70,20 @@
     (let [c (atom 0)
           argseq (seq (first args))]
       (fn []
-        (let [val (first (nthrest argseq @c))]
+        (let [val (nth argseq @c)]
           (swap! c inc)
           val)))))
 
+(def relbase (atom 0))
+
 (defn iorp
-  "Return immediate value or position value from tape"
+  "Return immediate value or [relative] position value from tape"
   [tape imm? x]
-  (if imm?
-    x
-    (aget tape x)))
+  (cond
+    (= imm? IMMMODE) x
+    (= imm? RELMODE) (nth tape (+ @relbase x))
+    (= imm? POSMODE) (nth tape x)
+    :else (println "\nBAD MODE:" imm?)))
 
 (defn tape-input-func
   "Return a function that returns the next code from the tape"
@@ -83,68 +94,98 @@
         {;kw  [func params]
          :ADD [  +    3]
          :MUL [  *    3]
-         :INP [(fn [tape pos] (aset tape pos (inp-func))) 1]
-         :PRN [(fn [tape pos] (let [val (aget tape pos)]
-                                (println "OUTPUT:" val)
-                                val)) 1]
+         :INP [(fn [tape immbit param]
+                 (let [v (inp-func)
+                       pos (if (rel? immbit)
+                             (+ param @relbase)
+                             param)]
+                   (assoc! tape pos v)
+                   v))           1]
+         :PRN [(fn [tape val] (println "\n  OUTPUT:" val) val) 1]
          :BRT [nil    2]
          :BRF [nil    2]
          :LT  [(fn [x y] (if (< x y) 1 0))    3]
          :EQL [(fn [x y] (if (= x y) 1 0))    3]
+         :RBS [(fn [bogus  x] (swap! relbase + x))   1]
          :HLT [ nil   0]
          }
         )
-      (let [code (aget tape @ip)
+      (let [code (nth tape @ip)
             opkw (opint-to-opkw code)
             opmap (opkw op-map)
             oplen (second opmap)
-            params (take oplen (nthrest tape (+ 1 @ip)))
+            params (loop [i 0 ps []]
+                     (if (< i oplen)
+                       (recur (inc i)
+                              (conj ps (nth tape (+ 1 @ip i))))
+                       ps))
+            ; params (take oplen (nthrest tape (+ 1 @ip)))
             immbits (imm code)
             _ (print (format "%3s %05d/%d" (int @ip) (int code) (int oplen)) opkw params) ]
         (swap! ip + (+ 1 oplen))   ; skip the opcode and params
         ;; Handle branching right here
-        (if (and (= opkw :BRT) (not (zero? (iorp tape (first immbits) (first params)))))
+        (if (and (= opkw :BRT) (not= 0N (iorp tape (first immbits) (first params))))
           (reset! ip (iorp tape (second immbits) (second params))))
-        (if (and (= opkw :BRF) (zero? (iorp tape (first immbits) (first params))))
+        (if (and (= opkw :BRF) (= 0N (iorp tape (first immbits) (first params))))
           (reset! ip (iorp tape (second immbits) (second params))))
         [code opmap params immbits]))))
 
 (defn doop
   "Doobie-doobie doo whop doo whop"
   [tape [code [f oplen] params immbits]]
-  (let [opkw (opint-to-opkw code)]
-    (cond
-      ;; HLT
-      (= opkw :HLT) nil
-      ;; PRN or LD, no immediate mode
-      (or (= opkw :PRN) (= opkw :INP)) (f tape (first params))
-      ;; No two-param ops
-      ;; + or *, get two imm or pos values, store in 3rd pos
-      (or (= opkw :ADD)
-          (= opkw :MUL)
-          (= opkw :LT)
-          (= opkw :EQL))
-      (let [p1 (iorp tape (first immbits) (first params))
-            p2 (iorp tape (second immbits) (second params))
-            pos (first (nthrest params 2))]
-        (aset tape pos (f p1 p2))))))
+  (let [opkw (opint-to-opkw code)
+        val (cond
+              ;; HLT
+              (= opkw :HLT) nil
+              (= opkw :INP)
+              ;; One param to store it into, could be relative
+              (f tape (first immbits) (first params))
+              ;; PRN or RBS, one param, tape is not used by PRN
+              (or (= opkw :PRN) (= opkw :RBS))
+              (let [pos (iorp tape (first immbits) (first params))]
+                (f tape pos))
+              ;; No two-param ops
+              ;; + or *, get two imm or pos values, store in 3rd pos
+              (or (= opkw :ADD)
+                  (= opkw :MUL)
+                  (= opkw :LT)
+                  (= opkw :EQL))
+              (let [p1 (iorp tape (first immbits) (first params))
+                    p2 (iorp tape (second immbits) (second params))
+                    posval (nth params 2)
+                    pos (if (rel? (nth immbits 2)) (+ @relbase posval) posval)]
+                ;(println opkw "into " pos "with" p1 p2)
+                (assoc! tape pos (f p1 p2))
+                (nth tape pos)))]
+    (println " ->" val)
+    val))
+
+;(def tape (long-array 10000000))       ; Ten MILLION longs
+(defn mktape [n src]
+  (let [sz (count src)]
+    (loop [i 0 v (transient [])]
+      (if (< i n)
+        (recur (inc i)
+               (conj! v (if (< i sz)
+                          (nth src i)   ; Use bigint if necessary
+                          0)))          ; Use bigint if necessary
+        v))))
 
 (defn intcode [src-tape inp-seq]
-  (let [tape (int-array src-tape)
-        input-func (in-func inp-seq)
-        nxtcode (tape-input-func input-func)]
-    (loop [code-ex (nxtcode tape)
-           out-val 0]
-      (let [code (first code-ex)
-            opkw (opint-to-opkw code)
-            _ (println "code: " code "opkw:" opkw)]
+  (let [input-func (in-func inp-seq)
+        nxtcode (tape-input-func input-func)
+        tapelen (count src-tape)
+        tape (mktape 4000 src-tape)
+        _ (println "\nProgram size is:" tapelen)]
+    (reset! relbase 0)
+    (loop [out-val 0]
+      (let [code-ex (nxtcode tape)
+            code (first code-ex)
+            opkw (opint-to-opkw code)]
         (if (or (nil? code) (= :HLT opkw))
-          (do
-            (println "\nDone!")
-            out-val)
+          out-val
           (let [res (doop tape code-ex)]
-            (recur (nxtcode tape)
-                   res)))))))
+            (recur res)))))))
 
 ;; Link up Amplifiers A..E and try all possible phase settings on each
 ;; Phase settings are in (range 5) 0..4 and each setting number is used
